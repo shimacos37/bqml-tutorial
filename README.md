@@ -1,0 +1,2 @@
+# bqml-tutorial
+BQMLのチュートリアルレポジトリ
