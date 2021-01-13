@@ -5,7 +5,7 @@ from glob import glob
 
 import pandas as pd
 from google.cloud import storage
-from invoke import Collection, task
+from invoke import task
 from jinja2 import Template
 
 from utils import BQClient
@@ -274,6 +274,61 @@ def import_tensorflow_model(c, use_log_feature=False):
 
 
 @task
+def predict_oof_tensorflow_model(c, use_log_feature=False):
+    bq = BQClient(c.gcp.project_id, c.gcp.dataset)
+    params = {}
+    if not use_log_feature:
+        for n_fold in range(5):
+            with open(f"./output/nn/fold{n_fold}/std.pkl", "rb") as f:
+                std = pickle.load(f)
+            means = std.mean_
+            stds = std.scale_
+            mean_keys = [f"mean_{i + 1}" for i in range(len(means))]
+            std_keys = [f"std_{i + 1}" for i in range(len(stds))]
+            params.update(
+                {
+                    f"means_fold{n_fold}": zip(mean_keys, means),
+                    f"stds_fold{n_fold}": zip(std_keys, stds),
+                }
+            )
+        params.update(
+            {
+                "table_id": "tensorflow_oof_pred",
+                "model_name": "tensorflow_nn_model",
+            }
+        )
+        sql_template = Template(
+            read_sql("sql/tensorflow_models/simple_models/predict_oof_model.sql")
+        )
+        sql = sql_template.render(params)
+    else:
+        for n_fold in range(5):
+            with open(f"./output/nn_log/fold{n_fold}/std.pkl", "rb") as f:
+                std = pickle.load(f)
+            means = std.mean_
+            stds = std.scale_
+            mean_keys = [f"mean_{i + 1}" for i in range(len(means))]
+            std_keys = [f"std_{i + 1}" for i in range(len(stds))]
+            params.update(
+                {
+                    f"means_fold{n_fold}": zip(mean_keys, means),
+                    f"stds_fold{n_fold}": zip(std_keys, stds),
+                }
+            )
+        params.update(
+            {
+                "table_id": "tensorflow_oof_log_pred",
+                "model_name": "tensorflow_nn_log_model",
+            }
+        )
+        sql_template = Template(
+            read_sql("sql/tensorflow_models/log_models/predict_oof_model.sql")
+        )
+        sql = sql_template.render(params)
+    bq.execute_query(sql)
+
+
+@task
 def predict_test_tensorflow_model(c, use_log_feature=False):
     bq = BQClient(c.gcp.project_id, c.gcp.dataset)
     params = {}
@@ -333,6 +388,84 @@ def predict_test_tensorflow_model(c, use_log_feature=False):
 # ====================================
 
 
+@task
+def train_stacking(c, model_name="xgb"):
+    bq = BQClient(c.gcp.project_id, c.gcp.dataset)
+    thread_executor = ThreadPoolExecutor()
+    jobs = []
+    table_names = []
+    for model in ["logistic", "dnn", "xgb"]:
+        table_names.extend(
+            [
+                f"{model}_oof_pred",
+                f"{model}_oof_log_pred",
+                f"{model}_oof_kmeans_pred",
+                f"{model}_oof_kmeans_log_pred",
+            ]
+        )
+    table_names.extend(["tensorflow_oof_pred", "tensorflow_oof_log_pred"])
+    sql_template = Template(
+        read_sql(f"sql/stacking_models/train_{model_name}_stacking.sql")
+    )
+    for n_fold in range(5):
+        sql = sql_template.render({"table_names": table_names, "n_fold": n_fold})
+        jobs.append(thread_executor.submit(bq.execute_query, sql))
+    for future in as_completed(jobs):
+        jobs.remove(future)
+
+
+@task
+def predict_oof_stacking_model(c, model_name="xgb"):
+    bq = BQClient(c.gcp.project_id, c.gcp.dataset)
+    table_names = []
+    for model in ["logistic", "dnn", "xgb"]:
+        table_names.extend(
+            [
+                f"{model}_oof_pred",
+                f"{model}_oof_log_pred",
+                f"{model}_oof_kmeans_pred",
+                f"{model}_oof_kmeans_log_pred",
+            ]
+        )
+    table_names.extend(["tensorflow_oof_pred", "tensorflow_oof_log_pred"])
+    sql_template = Template(read_sql("sql/stacking_models/predict_oof_stacking.sql"))
+    sql = sql_template.render(
+        {
+            "table_names": table_names,
+            "model_name": model_name,
+            "table_id": f"{model_name}_stacking_oof_pred",
+        }
+    )
+    bq.execute_query(sql)
+
+
+@task
+def predict_test_stacking_model(c, model_name="xgb"):
+    bq = BQClient(c.gcp.project_id, c.gcp.dataset)
+    table_names = []
+    for model in ["logistic", "dnn", "xgb"]:
+        table_names.extend(
+            [
+                f"{model}_test_pred",
+                f"{model}_test_log_pred",
+                f"{model}_test_kmeans_pred",
+                f"{model}_test_kmeans_log_pred",
+            ]
+        )
+    table_names.extend(["tensorflow_test_pred", "tensorflow_test_log_pred"])
+    column_names = [model.replace("test", "oof") for model in table_names]
+    sql_template = Template(read_sql("sql/stacking_models/predict_test_stacking.sql"))
+    sql = sql_template.render(
+        {
+            "table_names": table_names,
+            "model_name": model_name,
+            "column_table_names": zip(column_names, table_names),
+            "table_id": f"{model_name}_stacking_test_pred",
+        }
+    )
+    bq.execute_query(sql)
+
+
 # ====================================
 # SUB
 # ====================================
@@ -349,6 +482,87 @@ def make_submission(c, pred_table_id="dnn_test_pred"):
 # ====================================
 # Integration
 # ====================================
+
+
+@task
+def train_first_stage(c):
+    thread_executor = ThreadPoolExecutor()
+    jobs = []
+    # Train KMeans
+    jobs.append(thread_executor.submi(train_kmeans_model, c, use_log_feature=False))
+    jobs.append(thread_executor.submi(train_kmeans_model, c, use_log_feature=True))
+    for future in as_completed(jobs):
+        jobs.remove(future)
+    # Train Models
+    # Simple Model
+    for model_name in ["logistic", "dnn", "xgb"]:
+        jobs.append(
+            thread_executor.submit(
+                train_model,
+                c,
+                use_log_feature=False,
+                use_kmeans_feature=False,
+                model_name=model_name,
+            )
+        )
+    # Log feature
+    for model_name in ["logistic", "dnn", "xgb"]:
+        jobs.append(
+            thread_executor.submit(
+                train_model,
+                c,
+                use_log_feature=True,
+                use_kmeans_feature=False,
+                model_name=model_name,
+            )
+        )
+    # Simple Model + KMeans feature
+    for model_name in ["logistic", "dnn", "xgb"]:
+        jobs.append(
+            thread_executor.submit(
+                train_model,
+                c,
+                use_log_feature=False,
+                use_kmeans_feature=True,
+                model_name=model_name,
+            )
+        )
+    # Log feature + KMeans feature
+    for model_name in ["logistic", "dnn", "xgb"]:
+        jobs.append(
+            thread_executor.submit(
+                train_model,
+                c,
+                use_log_feature=True,
+                use_kmeans_feature=True,
+                model_name=model_name,
+            )
+        )
+    # Tensorflow model
+    jobs.append(
+        thread_executor.submit(
+            train_tensorflow_model,
+            c,
+            use_log_feature=False,
+        )
+    )
+    jobs.append(
+        thread_executor.submit(
+            train_tensorflow_model,
+            c,
+            use_log_feature=True,
+        )
+    )
+
+    for future in as_completed(jobs):
+        jobs.remove(future)
+
+    # Upload tensorflow models
+    upload_models(c)
+    import_tensorflow_model(c, use_log_feature=False)
+    import_tensorflow_model(c, use_log_feature=True)
+
+
 @task
 def predict_oof_all(c):
     thread_executor = ThreadPoolExecutor()
@@ -397,6 +611,22 @@ def predict_oof_all(c):
                 model_name=model_name,
             )
         )
+    # Tensorflow model
+    jobs.append(
+        thread_executor.submit(
+            predict_oof_tensorflow_model,
+            c,
+            use_log_feature=False,
+        )
+    )
+    jobs.append(
+        thread_executor.submit(
+            predict_oof_tensorflow_model,
+            c,
+            use_log_feature=True,
+        )
+    )
+
     for future in as_completed(jobs):
         jobs.remove(future)
 
@@ -449,8 +679,33 @@ def predict_test_all(c):
                 model_name=model_name,
             )
         )
+    # Tensorflow model
+    jobs.append(
+        thread_executor.submit(
+            predict_test_tensorflow_model,
+            c,
+            use_log_feature=False,
+        )
+    )
+    jobs.append(
+        thread_executor.submit(
+            predict_test_tensorflow_model,
+            c,
+            use_log_feature=True,
+        )
+    )
+
     for future in as_completed(jobs):
         jobs.remove(future)
+
+
+@task
+def all(c):
+    train_first_stage(c)
+    predict_oof_all(c)
+    predict_test_all(c)
+    train_stacking(c)
+    predict_test_stacking_model(c)
 
 
 @task
@@ -474,6 +729,7 @@ def make_submittion_all(c):
         )
     jobs.append(thread_executor.submit(make_submission, c, "tensorflow_test_pred"))
     jobs.append(thread_executor.submit(make_submission, c, "tensorflow_test_log_pred"))
+    jobs.append(thread_executor.submit(make_submission, c, "stacking_test_pred"))
     for future in as_completed(jobs):
         jobs.remove(future)
 
@@ -490,7 +746,9 @@ def submit_all(c):
                 f"{model_name}_test_kmeans_log_pred",
             ]
         )
-    filenames.extend(["tensorflow_test_pred", "tensorflow_test_log_pred"])
+    filenames.extend(
+        ["tensorflow_test_pred", "tensorflow_test_log_pred", "stacking_test_pred"]
+    )
     for filename in filenames:
         c.run(
             f"kaggle competitions submit otto-group-product-classification-challenge -f ./output/{filename}_sub.csv -m '{filename}'"
