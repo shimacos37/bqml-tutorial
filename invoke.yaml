@@ -1,0 +1,4 @@
+gcp:
+  project_id:
+  dataset: "otto"
+  bucket_name:
