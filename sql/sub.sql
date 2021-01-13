@@ -13,6 +13,11 @@ FROM (
   SELECT
     id,
     ARRAY_AGG(prob) AS prob_array,
-  FROM otto.{{pred_table_id}}
+  FROM (
+    SELECT
+      *
+    FROM otto.{{pred_table_id}}
+    ORDER BY id, label
+  )
   GROUP BY id
 )
