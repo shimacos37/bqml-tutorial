@@ -16,8 +16,8 @@ Kaggleの[Otto Group Product Classification Challenge](https://www.kaggle.com/c/
 ## データのダウンロード
 - `./input/otto/`以下に[Otto Group Product Classification Challenge](https://www.kaggle.com/c/otto-group-product-classification-challenge/overview)からダウンロードしたデータを解凍して下さい。
 ```bash
-kaggle competitions download -c otto-group-product-classification-challenge -p ./input/otto
-unzip input/otto/otto-group-product-classification-challenge.zip -d ./input/otto
+$ kaggle competitions download -c otto-group-product-classification-challenge -p ./input/otto
+$ unzip input/otto/otto-group-product-classification-challenge.zip -d ./input/otto
 ```
 
 ## GCP関連の設定
@@ -29,24 +29,24 @@ unzip input/otto/otto-group-product-classification-challenge.zip -d ./input/otto
 - pyenv, poetryのインストール (必要な方のみ)
 ```bash
 # install pyenv
-git clone git://github.com/yyuu/pyenv.git ~/.pyenv
-echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc [or your configuration file (ex. ~/.zshrc)]
-echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc
-echo 'eval "$(pyenv init -)"' >> ~/.bashrc
-source ~/.bashrc
+$ git clone git://github.com/yyuu/pyenv.git ~/.pyenv
+$ echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc [or your configuration file (ex. ~/.zshrc)]
+$ echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc
+$ echo 'eval "$(pyenv init -)"' >> ~/.bashrc
+$ source ~/.bashrc
 
 # install poetry
-curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python
-source $HOME/.poetry/env
+$ curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python
+$ source $HOME/.poetry/env
 
 # Set virtualenv in project
-pyenv install 3.7.7
-pyenv local 3.7.7
-poetry config virtualenvs.in-project true
+$ pyenv install 3.7.7
+$ pyenv local 3.7.7
+$ poetry config virtualenvs.in-project true
 ```
 - ライブラリのインストール
 ```bash
-poetry install
+$ poetry install
 ```
 
 ## BigQueryにcsvをアップロード
@@ -54,21 +54,24 @@ poetry install
 上で解凍したデータをBigQueryにアップロードします。
 デフォルトでデータセット名は`otto`となっていることを想定しているので、変更しないでください。
 ```bash
-poetry run inv upload-data
+$ poetry run inv upload-data
 ```
 
 # パイプライン
 
 元の特徴量とlogを取った特徴量、Kmeansのクラスタ中心までの距離特徴を各modelに突っ込むシンプルなStackingパイプラインです。
-
+<div align="center">
 <img src="fig/pipeline.png" width=50%>
+</div>
 
 # 結果
 
 localでやった方がスコアが高くなってしまうので要調査。
 KNNなしで銀圏近くまでいけてるので及第点くらいのスコアは出ていそう。
 
+<div align="center">
 <img src="fig/result.png" width=50%>
+</div>
 
 # コマンド一覧
 
