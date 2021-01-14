@@ -11,6 +11,8 @@ Kaggleの[Otto Group Product Classification Challenge](https://www.kaggle.com/c/
 - DNN
 - Tensorflow modelのインポート
 
+資料については[こちら](https://speakerdeck.com/shimacos/bqmlkotohazime)
+
 # 前準備
 
 ## データのダウンロード
