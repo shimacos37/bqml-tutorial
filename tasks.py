@@ -489,8 +489,8 @@ def train_first_stage(c):
     thread_executor = ThreadPoolExecutor()
     jobs = []
     # Train KMeans
-    jobs.append(thread_executor.submi(train_kmeans_model, c, use_log_feature=False))
-    jobs.append(thread_executor.submi(train_kmeans_model, c, use_log_feature=True))
+    jobs.append(thread_executor.submit(train_kmeans_model, c, use_log_feature=False))
+    jobs.append(thread_executor.submit(train_kmeans_model, c, use_log_feature=True))
     for future in as_completed(jobs):
         jobs.remove(future)
     # Train Models
@@ -706,6 +706,8 @@ def all(c):
     predict_test_all(c)
     train_stacking(c)
     predict_test_stacking_model(c)
+    make_submittion_all(c)
+    submit_all(c)
 
 
 @task
@@ -729,7 +731,7 @@ def make_submittion_all(c):
         )
     jobs.append(thread_executor.submit(make_submission, c, "tensorflow_test_pred"))
     jobs.append(thread_executor.submit(make_submission, c, "tensorflow_test_log_pred"))
-    jobs.append(thread_executor.submit(make_submission, c, "stacking_test_pred"))
+    jobs.append(thread_executor.submit(make_submission, c, "xgb_stacking_test_pred"))
     for future in as_completed(jobs):
         jobs.remove(future)
 
@@ -747,7 +749,7 @@ def submit_all(c):
             ]
         )
     filenames.extend(
-        ["tensorflow_test_pred", "tensorflow_test_log_pred", "stacking_test_pred"]
+        ["tensorflow_test_pred", "tensorflow_test_log_pred", "xgb_stacking_test_pred"]
     )
     for filename in filenames:
         c.run(
