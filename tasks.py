@@ -389,7 +389,7 @@ def predict_test_tensorflow_model(c, use_log_feature=False):
 
 
 @task
-def train_stacking(c, model_name="xgb"):
+def train_stacking_model(c, model_name="xgb"):
     bq = BQClient(c.gcp.project_id, c.gcp.dataset)
     thread_executor = ThreadPoolExecutor()
     jobs = []
@@ -704,7 +704,7 @@ def all(c):
     train_first_stage(c)
     predict_oof_all(c)
     predict_test_all(c)
-    train_stacking(c)
+    train_stacking_model(c)
     predict_test_stacking_model(c)
     make_submittion_all(c)
     submit_all(c)
