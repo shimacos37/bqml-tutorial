@@ -59,9 +59,16 @@ poetry run inv upload-data
 
 # パイプライン
 
+元の特徴量とlogを取った特徴量、Kmeansのクラスタ中心までの距離特徴を各modelに突っ込むシンプルなStackingパイプラインです。
+
+![pipeline]('fig/pipeline.png')
+
 # 結果
 
-![result]('./fig/result.png')
+localでやった方がスコアが高くなってしまうので要調査。
+KNNなしで銀圏近くまでいけてるので及第点くらいのスコアは出ていそう。
+
+![result]('fig/result.png')
 
 # コマンド一覧
 
